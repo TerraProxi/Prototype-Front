@@ -1,5 +1,5 @@
 
-import { Component, inject } from '@angular/core';
+import { Component, inject, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { StoreService } from '../services/store.service';
 import { NavbarComponent } from './navbar.component';
@@ -21,18 +21,42 @@ import { NavbarComponent } from './navbar.component';
         <!-- Search -->
         <div class="bg-white rounded-xl shadow-sm p-3 flex items-center border border-gray-100">
            <span class="material-icons-round text-gray-400 mr-2">search</span>
-           <input type="text" placeholder="Rechercher ferme, marché..." class="w-full text-sm outline-none text-gray-700 bg-transparent placeholder-gray-400">
+           <input
+             type="text"
+             placeholder="Rechercher ferme, marché..."
+             class="w-full text-sm outline-none text-gray-700 bg-transparent placeholder-gray-400"
+             [value]="searchQuery()"
+             (input)="onSearchChange($event)"
+           >
         </div>
 
         <!-- Filters -->
         <div class="flex gap-2 overflow-x-auto no-scrollbar">
-           <button class="bg-primary text-white px-4 py-2 rounded-full text-xs font-bold shadow-md shadow-primary/30 whitespace-nowrap">
+           <button
+             [ngClass]="activeFilter() === 'closest'
+               ? 'bg-primary text-white shadow-md shadow-primary/30'
+               : 'bg-white text-gray-700 border border-gray-200'"
+             class="px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap"
+             (click)="setFilter('closest')"
+           >
              <span class="material-icons-round text-sm align-middle mr-1">place</span> Plus proche
            </button>
-           <button class="bg-white text-gray-700 border border-gray-200 px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap">
+           <button
+             [ngClass]="activeFilter() === 'rating'
+               ? 'bg-primary text-white shadow-md shadow-primary/30'
+               : 'bg-white text-gray-700 border border-gray-200'"
+             class="px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap"
+             (click)="setFilter('rating')"
+           >
              <span class="material-icons-round text-sm align-middle mr-1">star</span> Mieux notés
            </button>
-           <button class="bg-white text-gray-700 border border-gray-200 px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap">
+           <button
+             [ngClass]="activeFilter() === 'open'
+               ? 'bg-primary text-white shadow-md shadow-primary/30'
+               : 'bg-white text-gray-700 border border-gray-200'"
+             class="px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap"
+             (click)="setFilter('open')"
+           >
              <span class="material-icons-round text-sm align-middle mr-1">store</span> Ouvert
            </button>
         </div>
@@ -83,7 +107,69 @@ import { NavbarComponent } from './navbar.component';
 })
 export class ShopListComponent {
   store = inject(StoreService);
-  producers = this.store.producers;
+
+  // Filter state
+  activeFilter = signal<'closest' | 'rating' | 'open'>('closest');
+  searchQuery = signal('');
+
+  // Filtered and sorted producers
+  producers = computed(() => {
+    const allProducers = this.store.producers();
+    const filter = this.activeFilter();
+    const query = this.searchQuery().toLowerCase().trim();
+
+    let filtered = [...allProducers];
+
+    // Apply text search (normalize text for accent-insensitive search)
+    if (query) {
+      const normalizeText = (text: string) =>
+        text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+      filtered = filtered.filter(producer =>
+        normalizeText(producer.name).includes(normalizeText(query)) ||
+        normalizeText(producer.tagline).includes(normalizeText(query)) ||
+        normalizeText(producer.address).includes(normalizeText(query))
+      );
+    }
+
+    // Apply filter
+    switch (filter) {
+      case 'open':
+        filtered = filtered.filter(p => p.isOpen);
+        break;
+      case 'rating':
+        // Already filtered by rating, will be sorted below
+        break;
+      case 'closest':
+        // Already filtered by distance, will be sorted below
+        break;
+    }
+
+    // Apply sorting
+    switch (filter) {
+      case 'closest':
+        filtered.sort((a, b) => a.distance - b.distance);
+        break;
+      case 'rating':
+        filtered.sort((a, b) => b.rating - a.rating);
+        break;
+      case 'open':
+        // For open filter, sort by distance as secondary criteria
+        filtered.sort((a, b) => a.distance - b.distance);
+        break;
+    }
+
+    return filtered;
+  });
+
+  setFilter(filter: 'closest' | 'rating' | 'open') {
+    this.activeFilter.set(filter);
+  }
+
+  onSearchChange(event: Event) {
+    const target = event.target as HTMLInputElement;
+    this.searchQuery.set(target.value);
+  }
 
   openShop(id: string) {
     this.store.selectProducer(id);
