@@ -127,7 +127,7 @@ import * as L from 'leaflet';
       <!-- Location Button -->
       <div class="absolute bottom-32 right-4 z-[1000] pointer-events-auto">
         <button
-          class="bg-white p-3 rounded-full shadow-lg text-blue-500 border border-gray-100 active:bg-gray-50 relative"
+          class="bg-white w-12 h-12 flex items-center justify-center rounded-full shadow-lg text-blue-500 border border-gray-100 active:bg-gray-50 relative"
           [class.animate-pulse]="isLocatingUser()"
           (click)="centerOnUser()"
         >
