@@ -290,11 +290,14 @@ export class MapDiscoveryComponent implements AfterViewInit, OnDestroy {
   ngAfterViewInit() {
     this.initMap();
     this.addProducerMarkers();
-    this.getUserLocation();
     this.mapInitialized = true;
     // Ensure markers are properly filtered on initialization
     this.updateFilteredMarkers(this.filteredProducers());
 
+    // Delay user location to ensure map is fully ready
+    setTimeout(() => {
+      this.getUserLocation();
+    }, 500);
   }
 
   ngOnDestroy() {
@@ -304,6 +307,12 @@ export class MapDiscoveryComponent implements AfterViewInit, OnDestroy {
   }
 
   private initMap() {
+    // Ensure container is ready
+    if (!this.mapContainer.nativeElement) {
+      console.error('Map container not found');
+      return;
+    }
+
     // Initialize the map
     this.map = L.map(this.mapContainer.nativeElement, {
       center: this.defaultCenter,
@@ -397,10 +406,26 @@ export class MapDiscoveryComponent implements AfterViewInit, OnDestroy {
     let iconName = 'store';
     if (producer.categories.includes('Légumes')) {
       iconName = 'agriculture';
-    } else if (producer.categories.includes('Crèmerie')) {
-      iconName = 'egg';
     } else if (producer.categories.includes('Fruits')) {
       iconName = 'local_florist';
+    } else if (producer.categories.includes('Poissons & Crustacés')) {
+      iconName = 'set_meal';
+    } else if (producer.categories.includes('Vins') || producer.categories.includes('Spiritueux')) {
+      iconName = 'wine_bar';
+    } else if (producer.categories.includes('Miel')) {
+      iconName = 'hive';
+    } else if (producer.categories.includes('Fromage') || producer.categories.includes('Crèmerie')) {
+      iconName = 'egg';
+    } else if (producer.categories.includes('Viande')) {
+      iconName = 'kebab_dining';
+    } else if (producer.categories.includes('Boissons')) {
+      iconName = 'local_cafe';
+    } else if (producer.categories.includes('Épicerie') || producer.categories.includes('Huile')) {
+      iconName = 'shopping_basket';
+    } else if (producer.categories.includes('Œufs')) {
+      iconName = 'egg_alt';
+    } else if (producer.categories.includes('Confitures')) {
+      iconName = 'cookie';
     }
 
     const html = `
@@ -562,6 +587,13 @@ export class MapDiscoveryComponent implements AfterViewInit, OnDestroy {
       return;
     }
 
+    // Ensure map is ready before adding marker
+    if (!this.map || !this.mapContainer.nativeElement || !document.contains(this.mapContainer.nativeElement)) {
+      console.warn('Map not ready or not in DOM, retrying in 100ms...');
+      setTimeout(() => this.addUserMarker(lat, lng), 100);
+      return;
+    }
+
     const userIcon = L.divIcon({
       html: `
         <div class="relative flex items-center justify-center">
@@ -574,8 +606,15 @@ export class MapDiscoveryComponent implements AfterViewInit, OnDestroy {
       iconAnchor: [16, 16]
     });
 
-    this.userMarker = L.marker([lat, lng], { icon: userIcon, zIndexOffset: 1000 });
-    this.userMarker.addTo(this.map);
+    try {
+      this.userMarker = L.marker([lat, lng], { icon: userIcon, zIndexOffset: 1000 });
+      this.userMarker.addTo(this.map);
+      console.log('User marker added successfully at:', lat, lng);
+    } catch (error) {
+      console.error('Error adding user marker:', error);
+      // Retry after a short delay
+      setTimeout(() => this.addUserMarker(lat, lng), 200);
+    }
   }
 
   selectProducer(id: string) {
