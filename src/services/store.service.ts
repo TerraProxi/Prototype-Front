@@ -51,6 +51,21 @@ export type AppView = 'splash' | 'onboarding' | 'auth' | 'map' | 'shop-list' | '
   providedIn: 'root'
 })
 export class StoreService {
+  // User location
+  readonly userLocation = signal<{ lat: number; lng: number } | null>(null);
+
+  // Utility function to calculate distance between two coordinates using Haversine formula
+  private calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371; // Earth's radius in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Math.round((R * c) * 10) / 10; // Round to 1 decimal place
+  }
   // --- State Signals ---
   
   // Navigation
@@ -138,9 +153,10 @@ export class StoreService {
     this.cart().reduce((sum, item) => sum + (item.product.price * item.quantity), 0)
   );
 
-  readonly cartCount = computed(() => 
+  readonly cartCount = computed(() =>
     this.cart().reduce((sum, item) => sum + item.quantity, 0)
   );
+
 
   // --- Actions ---
   setView(view: AppView) {
@@ -168,6 +184,31 @@ export class StoreService {
         return items.map(i => i.product.id === productId ? { ...i, quantity: i.quantity - 1 } : i);
       }
       return items.filter(i => i.product.id !== productId);
+    });
+  }
+
+  // Update user location
+  setUserLocation(lat: number, lng: number) {
+    this.userLocation.set({ lat, lng });
+
+    // Immediately update distances for all producers
+    this.updateProducerDistances(lat, lng);
+  }
+
+  private updateProducerDistances(userLat: number, userLng: number) {
+    this.producers.update(currentProducers => {
+      return currentProducers.map(producer => {
+        const distance = this.calculateDistance(
+          userLat,
+          userLng,
+          producer.coordinates.lat,
+          producer.coordinates.lng
+        );
+        return {
+          ...producer,
+          distance
+        };
+      });
     });
   }
 }

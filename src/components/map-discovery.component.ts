@@ -55,7 +55,11 @@ import * as L from 'leaflet';
                         <span class="text-xs font-medium">{{producer.rating}}</span>
                       </div>
                       <span class="text-xs text-gray-400">•</span>
-                      <span class="text-xs text-gray-500">{{producer.distance}} km</span>
+                      @if (producer.distance === 0) {
+                        <span class="text-xs text-gray-500">Calcul...</span>
+                      } @else {
+                        <span class="text-xs text-gray-500">{{producer.distance}} km</span>
+                      }
                     </div>
                   </div>
                   @if (producer.isOpen) {
@@ -122,11 +126,12 @@ import * as L from 'leaflet';
 
       <!-- Location Button -->
       <div class="absolute bottom-32 right-4 z-[1000] pointer-events-auto">
-        <button 
-          class="bg-white p-3 rounded-full shadow-lg text-blue-500 border border-gray-100 active:bg-gray-50"
+        <button
+          class="bg-white p-3 rounded-full shadow-lg text-blue-500 border border-gray-100 active:bg-gray-50 relative"
+          [class.animate-pulse]="isLocatingUser()"
           (click)="centerOnUser()"
         >
-          <span class="material-icons-round">my_location</span>
+          <span class="material-icons-round">{{isLocatingUser() ? 'location_searching' : 'my_location'}}</span>
         </button>
       </div>
 
@@ -158,7 +163,12 @@ import * as L from 'leaflet';
                     <span class="material-icons-round text-[14px] text-yellow-500">star</span> {{producer.rating}}
                   </div>
                   <div class="flex items-center gap-1 text-xs text-gray-500">
-                    <span class="material-icons-round text-[14px]">place</span> {{producer.distance}} km
+                    <span class="material-icons-round text-[14px]">place</span>
+                    @if (producer.distance === 0) {
+                      <span>Calcul en cours...</span>
+                    } @else {
+                      <span>{{producer.distance}} km</span>
+                    }
                   </div>
                   <div class="flex items-center gap-1 text-xs text-primary font-semibold ml-auto">
                     Voir détails <span class="material-icons-round text-[14px]">arrow_forward</span>
@@ -203,6 +213,7 @@ export class MapDiscoveryComponent implements AfterViewInit, OnDestroy {
   activeFilter = signal<string>('Tous');
   showFilters = signal(false);
   showSearchResults = signal(false);
+  isLocatingUser = signal(true); // True until we get user location
 
   // Filtered producers based on search and filter
   filteredProducers = computed(() => {
@@ -245,9 +256,9 @@ export class MapDiscoveryComponent implements AfterViewInit, OnDestroy {
   private userMarker?: L.Marker;
   private mapInitialized = false;
 
-  // Default center: Montpellier
-  private defaultCenter: L.LatLngExpression = [43.6109, 3.8764];
-  private defaultZoom = 12;
+  // Default center: Montpellier area (more centered)
+  private defaultCenter: L.LatLngExpression = [43.6108, 3.8763];
+  private defaultZoom = 13;
 
   constructor() {
     // Effect to update marker styles when selection changes
@@ -265,6 +276,15 @@ export class MapDiscoveryComponent implements AfterViewInit, OnDestroy {
         this.updateFilteredMarkers(filteredProducers);
       }
     });
+
+    // Effect to update markers when distances change (when user location is found)
+    effect(() => {
+      const allProducers = this.producers();
+      if (this.mapInitialized) {
+        const filteredProducers = this.filteredProducers();
+        this.updateFilteredMarkers(filteredProducers);
+      }
+    });
   }
 
   ngAfterViewInit() {
@@ -274,6 +294,7 @@ export class MapDiscoveryComponent implements AfterViewInit, OnDestroy {
     this.mapInitialized = true;
     // Ensure markers are properly filtered on initialization
     this.updateFilteredMarkers(this.filteredProducers());
+
   }
 
   ngOnDestroy() {
@@ -421,17 +442,117 @@ export class MapDiscoveryComponent implements AfterViewInit, OnDestroy {
 
   private getUserLocation() {
     if ('geolocation' in navigator) {
+      // First, try to get current position with high accuracy
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          const { latitude, longitude } = position.coords;
+          const { latitude, longitude, accuracy } = position.coords;
+          console.log(`User location found: ${latitude}, ${longitude} (accuracy: ${accuracy}m)`);
+
+          // Store user location in the service
+          this.store.setUserLocation(latitude, longitude);
           this.addUserMarker(latitude, longitude);
+          this.isLocatingUser.set(false);
+
+          // Then watch for position changes
+          this.watchUserLocation();
         },
-        () => {
-          // Geolocation denied or unavailable, use default location
-          this.addUserMarker(this.defaultCenter[0] as number, this.defaultCenter[1] as number);
+        (error) => {
+          console.warn('Geolocation error:', error);
+          // Try with lower accuracy as fallback
+          this.tryLowAccuracyLocation();
         },
-        { enableHighAccuracy: true }
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 60000 // 1 minute
+        }
       );
+    } else {
+      console.warn('Geolocation not supported');
+      this.useDefaultLocation();
+    }
+  }
+
+  private tryLowAccuracyLocation() {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        console.log(`Low accuracy location: ${latitude}, ${longitude} (accuracy: ${accuracy}m)`);
+
+        this.store.setUserLocation(latitude, longitude);
+        this.addUserMarker(latitude, longitude);
+        this.isLocatingUser.set(false);
+      },
+      (error) => {
+        console.warn('Low accuracy geolocation also failed:', error);
+        this.useDefaultLocation();
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 10000,
+        maximumAge: 300000 // 5 minutes
+      }
+    );
+  }
+
+  private watchUserLocation() {
+    if ('geolocation' in navigator) {
+      navigator.geolocation.watchPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          // Update location if user moved significantly (more than 100m)
+          const currentLocation = this.store.userLocation();
+          if (currentLocation) {
+            const distance = this.calculateDistance(
+              currentLocation.lat, currentLocation.lng,
+              latitude, longitude
+            );
+          if (distance > 0.1) { // 100 meters
+            console.log(`User moved ${distance}km, updating location`);
+            this.store.setUserLocation(latitude, longitude);
+            this.updateUserMarker(latitude, longitude);
+            // Distances are automatically updated in setUserLocation
+          }
+          }
+        },
+        (error) => {
+          console.warn('Watch position error:', error);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 30000 // 30 seconds
+        }
+      );
+    }
+  }
+
+  private useDefaultLocation() {
+    const defaultLat = this.defaultCenter[0] as number;
+    const defaultLng = this.defaultCenter[1] as number;
+    console.log(`Using default location: ${defaultLat}, ${defaultLng}`);
+    this.store.setUserLocation(defaultLat, defaultLng);
+    this.addUserMarker(defaultLat, defaultLng);
+    this.isLocatingUser.set(false);
+  }
+
+  private calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371; // Earth's radius in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }
+
+  private updateUserMarker(lat: number, lng: number) {
+    if (this.userMarker) {
+      this.userMarker.setLatLng([lat, lng]);
+    } else {
+      this.addUserMarker(lat, lng);
     }
   }
 
