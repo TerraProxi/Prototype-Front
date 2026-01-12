@@ -26,6 +26,8 @@ import * as L from 'leaflet';
               class="w-full text-sm font-semibold outline-none text-gray-700 placeholder-gray-400 bg-transparent"
               [value]="searchQuery()"
               (input)="onSearchChange($event)"
+              (focus)="onSearchFocus()"
+              (blur)="onSearchBlur()"
             />
             <span
               class="material-icons-round cursor-pointer p-1 hover:bg-gray-50 rounded-full"
@@ -33,7 +35,38 @@ import * as L from 'leaflet';
               (click)="toggleFilters()"
             >tune</span>
           </div>
-        </div>
+          </div>
+
+          <!-- Search Results Dropdown -->
+          @if (showSearchResults() && searchResults().length > 0) {
+            <div class="absolute top-full left-4 right-4 mt-1 bg-white rounded-2xl shadow-xl border border-gray-100 z-[1000] max-h-64 overflow-y-auto">
+              @for (producer of searchResults(); track producer.id) {
+                <div
+                  class="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                  (click)="selectSearchResult(producer)"
+                >
+                  <img [src]="producer.avatar" class="w-10 h-10 rounded-full object-cover" [alt]="producer.name">
+                  <div class="flex-1 min-w-0">
+                    <div class="font-semibold text-gray-900 truncate">{{producer.name}}</div>
+                    <div class="text-xs text-gray-500 truncate">{{producer.tagline}}</div>
+                    <div class="flex items-center gap-2 mt-1">
+                      <div class="flex items-center gap-1">
+                        <span class="material-icons-round text-yellow-500 text-xs">star</span>
+                        <span class="text-xs font-medium">{{producer.rating}}</span>
+                      </div>
+                      <span class="text-xs text-gray-400">•</span>
+                      <span class="text-xs text-gray-500">{{producer.distance}} km</span>
+                    </div>
+                  </div>
+                  @if (producer.isOpen) {
+                    <div class="text-xs font-semibold text-green-600 bg-green-100 px-2 py-1 rounded-full">Ouvert</div>
+                  } @else {
+                    <div class="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Fermé</div>
+                  }
+                </div>
+              }
+            </div>
+          }
 
         <!-- Filter Chips -->
         @if (showFilters()) {
@@ -149,6 +182,15 @@ import * as L from 'leaflet';
   `]
 })
 export class MapDiscoveryComponent implements AfterViewInit, OnDestroy {
+  // Utility function to normalize text (remove accents)
+  private normalizeText(text: string): string {
+    return text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Remove diacritics
+      .replace(/œ/g, 'oe')
+      .replace(/æ/g, 'ae');
+  }
   @ViewChild('mapContainer') mapContainer!: ElementRef<HTMLDivElement>;
 
   store = inject(StoreService);
@@ -160,19 +202,20 @@ export class MapDiscoveryComponent implements AfterViewInit, OnDestroy {
   searchQuery = signal('');
   activeFilter = signal<string>('Tous');
   showFilters = signal(false);
+  showSearchResults = signal(false);
 
   // Filtered producers based on search and filter
   filteredProducers = computed(() => {
     const producers = this.producers();
-    const query = this.searchQuery().toLowerCase().trim();
+    const query = this.normalizeText(this.searchQuery().trim());
     const filter = this.activeFilter();
 
     return producers.filter(producer => {
-      // Text search
+      // Text search (accent-insensitive)
       const matchesSearch = query === '' ||
-        producer.name.toLowerCase().includes(query) ||
-        producer.tagline.toLowerCase().includes(query) ||
-        producer.address.toLowerCase().includes(query);
+        this.normalizeText(producer.name).includes(query) ||
+        this.normalizeText(producer.tagline).includes(query) ||
+        this.normalizeText(producer.address).includes(query);
 
       // Category filter
       const matchesFilter = filter === 'Tous' ||
@@ -180,6 +223,21 @@ export class MapDiscoveryComponent implements AfterViewInit, OnDestroy {
 
       return matchesSearch && matchesFilter;
     });
+  });
+
+  // Search results for dropdown (limited to 6 results)
+  searchResults = computed(() => {
+    const query = this.normalizeText(this.searchQuery().trim());
+    if (query === '') return [];
+
+    const producers = this.producers();
+    return producers
+      .filter(producer =>
+        this.normalizeText(producer.name).includes(query) ||
+        this.normalizeText(producer.tagline).includes(query) ||
+        this.normalizeText(producer.address).includes(query)
+      )
+      .slice(0, 6); // Limit to 6 results
   });
 
   private map!: L.Map;
@@ -411,6 +469,26 @@ export class MapDiscoveryComponent implements AfterViewInit, OnDestroy {
   onSearchChange(event: Event) {
     const target = event.target as HTMLInputElement;
     this.searchQuery.set(target.value);
+    this.showSearchResults.set(target.value.trim().length > 0);
+  }
+
+  onSearchFocus() {
+    if (this.searchQuery().trim().length > 0) {
+      this.showSearchResults.set(true);
+    }
+  }
+
+  onSearchBlur() {
+    // Delay to allow clicks on results
+    setTimeout(() => {
+      this.showSearchResults.set(false);
+    }, 150);
+  }
+
+  selectSearchResult(producer: Producer) {
+    this.searchQuery.set(producer.name);
+    this.showSearchResults.set(false);
+    this.selectProducer(producer.id);
   }
 
   setFilter(filter: string) {
