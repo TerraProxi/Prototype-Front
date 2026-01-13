@@ -14,6 +14,7 @@ import { CartComponent } from './components/cart.component';
 import { ChatComponent } from './components/chat.component';
 import { FavoritesComponent } from './components/favorites.component';
 import { ShopListComponent } from './components/shop-list.component';
+import { ScanComponent } from './components/scan.component';
 
 @Component({
   selector: 'app-root',
@@ -30,7 +31,8 @@ import { ShopListComponent } from './components/shop-list.component';
     CartComponent,
     ChatComponent,
     FavoritesComponent,
-    ShopListComponent
+    ShopListComponent,
+    ScanComponent
   ],
   template: `
     <main class="w-full h-full relative overflow-hidden bg-white text-gray-900 shadow-2xl mx-auto max-w-md md:border-x md:border-gray-100">
@@ -46,6 +48,7 @@ import { ShopListComponent } from './components/shop-list.component';
         @case ('cart') { <app-cart></app-cart> }
         @case ('chat') { <app-chat></app-chat> }
         @case ('favorites') { <app-favorites></app-favorites> }
+        @case ('scan') { <app-scan></app-scan> }
         @default { <app-splash></app-splash> }
       }
     </main>

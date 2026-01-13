@@ -45,7 +45,7 @@ export interface ChatMessage {
   actions?: string[];
 }
 
-export type AppView = 'splash' | 'onboarding' | 'auth' | 'map' | 'shop-list' | 'profile' | 'user-profile' | 'catalog' | 'cart' | 'chat' | 'favorites';
+export type AppView = 'splash' | 'onboarding' | 'auth' | 'map' | 'shop-list' | 'profile' | 'user-profile' | 'catalog' | 'cart' | 'chat' | 'favorites' | 'scan';
 
 @Injectable({
   providedIn: 'root'

@@ -22,7 +22,11 @@ import { StoreService } from '../services/store.service';
 
       <!-- QR Code / Scan Center Button -->
       <div class="relative -top-6">
-        <button class="flex items-center justify-center w-14 h-14 rounded-full bg-primary text-white shadow-lg shadow-primary/40 transform active:scale-95 transition-all border-4 border-gray-100">
+        <button 
+          class="flex items-center justify-center w-14 h-14 rounded-full bg-primary text-white shadow-lg shadow-primary/40 transform active:scale-95 transition-all border-4 border-gray-100"
+          [ngClass]="activeTab === 'scan' ? 'ring-2 ring-primary ring-offset-2' : ''"
+          (click)="nav('scan')"
+        >
           <span class="material-icons-round text-2xl">qr_code_scanner</span>
         </button>
       </div>
